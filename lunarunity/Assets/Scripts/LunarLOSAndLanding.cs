@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.InputSystem;
 
 public class LunarLOSAndLanding : MonoBehaviour
 {
@@ -17,15 +18,20 @@ public class LunarLOSAndLanding : MonoBehaviour
     public bool hasEarthLOS;
     public float surfaceSlopeDegrees;
 
-    [Header("Visual Marker (Optional)")]
+    [Header("Visual Marker")]
     public Transform siteMarker;
 
     void Update()
     {
+        var mouse = Mouse.current;
+        var keyboard = Keyboard.current;
+        if (mouse == null || keyboard == null) return;
+
         // Left-click on the Moon in Orbital View to select and analyze a landing site
-        if (orbitalCamera != null && orbitalCamera.gameObject.activeInHierarchy && Input.GetMouseButtonDown(0))
+        if (orbitalCamera != null && orbitalCamera.gameObject.activeInHierarchy && mouse.leftButton.wasPressedThisFrame)
         {
-            Ray ray = orbitalCamera.ScreenPointToRay(Input.mousePosition);
+            Vector2 mousePos = mouse.position.ReadValue();
+            Ray ray = orbitalCamera.ScreenPointToRay(mousePos);
             if (Physics.Raycast(ray, out RaycastHit hit))
             {
                 SelectLandingSite(hit.point, hit.normal);
@@ -38,7 +44,7 @@ public class LunarLOSAndLanding : MonoBehaviour
             EvaluateLOS(selectedPoint, selectedNormal);
 
             // Press 'F' to land at the selected site and enter FPS POV
-            if (orbitalCamera != null && orbitalCamera.gameObject.activeInHierarchy && Input.GetKeyDown(KeyCode.F))
+            if (orbitalCamera != null && orbitalCamera.gameObject.activeInHierarchy && keyboard.fKey.wasPressedThisFrame)
             {
                 EnterFPSAtSelectedSite();
             }
@@ -68,8 +74,7 @@ public class LunarLOSAndLanding : MonoBehaviour
 
     public void EvaluateLOS(Vector3 surfacePoint, Vector3 normal)
     {
-        // Offset origin slightly above the surface to prevent self-intersection with the terrain collider
-        Vector3 origin = surfacePoint + normal * 0.25f;
+        Vector3 origin = surfacePoint + normal * 0.5f;
 
         // 1. Line-of-Sight to the Sun
         Vector3 toSun = (sunVisual.position - origin).normalized;
@@ -84,7 +89,6 @@ public class LunarLOSAndLanding : MonoBehaviour
         hasEarthLOS = directEarthLOS || CheckRadioDiffraction(origin, earthVisual.position);
     }
 
-    // Hook for Phase 2: Radio wave propagation / Fresnel knife-edge diffraction around crater rims
     private bool CheckRadioDiffraction(Vector3 origin, Vector3 target)
     {
         // TODO: Implement Fresnel zone / knife-edge diffraction loss calculation
