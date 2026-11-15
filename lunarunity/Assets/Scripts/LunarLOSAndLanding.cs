@@ -25,26 +25,29 @@ public class LunarLOSAndLanding : MonoBehaviour
     public bool playerHasEarthLOS;
 
     [Header("Visual Marker & 3D LOS Beams")]
-    public float beamThicknessMultiplier = 6f;
-    public bool scaleBeamWithOrbitDistance = true;
     public Transform siteMarker;
-    public bool showLosBeams = true;
+    public bool showSiteBeams = true;
+    public bool showPlayerOrbitalBeams = true;
     public float maxVisualBeamLength = 3500f;
     public float normalBeaconLength = 600f;
-    private LineRenderer siteNormalBeam;
-    private LineRenderer playerNormalBeam;
+    public float beamThicknessMultiplier = 6f;
+    public bool scaleBeamWithOrbitDistance = true;
+
     private LineRenderer siteSunBeam;
     private LineRenderer siteEarthBeam;
+    private LineRenderer siteNormalBeam;
     private LineRenderer playerSunBeam;
     private LineRenderer playerEarthBeam;
+    private LineRenderer playerNormalBeam;
 
     void Start()
     {
         siteSunBeam = CreateBeamRenderer("SiteSunLOSBeam", 1.8f);
         siteEarthBeam = CreateBeamRenderer("SiteEarthLOSBeam", 1.8f);
+        siteNormalBeam = CreateBeamRenderer("SiteNormalBeacon", 1.5f);
+
         playerSunBeam = CreateBeamRenderer("PlayerSunLOSBeam", 1.2f);
         playerEarthBeam = CreateBeamRenderer("PlayerEarthLOSBeam", 1.2f);
-        siteNormalBeam = CreateBeamRenderer("SiteNormalBeacon", 1.5f);
         playerNormalBeam = CreateBeamRenderer("PlayerNormalBeacon", 1.5f);
     }
 
@@ -55,12 +58,11 @@ public class LunarLOSAndLanding : MonoBehaviour
         LineRenderer lr = obj.AddComponent<LineRenderer>();
         lr.positionCount = 2;
         lr.startWidth = width;
-        lr.endWidth = width * 0.5f;
+        lr.endWidth = width * 0.75f;
         lr.useWorldSpace = true;
         lr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
         lr.receiveShadows = false;
 
-        // Uses Unity's built-in Sprites/Default shader so vertex colors render cleanly in URP without lighting issues
         Shader unlitShader = Shader.Find("Sprites/Default");
         if (unlitShader != null)
             lr.material = new Material(unlitShader);
@@ -69,7 +71,7 @@ public class LunarLOSAndLanding : MonoBehaviour
         return lr;
     }
 
-void Update()
+    void Update()
     {
         var mouse = Mouse.current;
         var keyboard = Keyboard.current;
@@ -107,20 +109,20 @@ void Update()
         float beamScale = baseScale * beamThicknessMultiplier;
         float beaconLen = inOrbit ? normalBeaconLength : (cameraController != null && cameraController.isDebugScale ? 25f : 2.5f);
 
-        // 1. Evaluate & visualize LOS + Radial Normal Beacon for the selected Landing Site
+        // 1. Evaluate & visualize LOS + Radial Normal Beacon for the selected Landing Site / Bookmark
         if (hasSelectedSite)
         {
             EvaluateAndDrawLOS(
                 selectedPoint, selectedNormal, currentEyeOffset,
                 out hasSunLOS, out hasEarthLOS,
-                siteSunBeam, siteEarthBeam,
+                siteSunBeam, siteEarthBeam, showSiteBeams,
                 new Color(1f, 0.85f, 0.2f, 0.9f), // Warm Gold for Sun
                 new Color(0.25f, 0.75f, 1f, 0.9f), // Cyan-Blue for Earth
                 beamScale
             );
 
             Vector3 siteRadialUp = (selectedPoint - moonCenter.position).normalized;
-            DrawNormalBeacon(siteNormalBeam, selectedPoint, siteRadialUp, beaconLen, beamScale * 0.9f, new Color(1f, 0.35f, 0.45f, 0.85f));
+            DrawNormalBeacon(siteNormalBeam, selectedPoint, siteRadialUp, beaconLen, beamScale * 0.9f, new Color(1f, 0.35f, 0.45f, 0.85f), showSiteBeams);
 
             if (inOrbit && keyboard.fKey.wasPressedThisFrame)
             {
@@ -134,7 +136,7 @@ void Update()
             SetBeamEnabled(siteNormalBeam, false);
         }
 
-        // 2. Evaluate & visualize LOS + Radial Normal Beacon for the Astronaut
+        // 2. Evaluate LOS for the Astronaut (hide player beams when landed in FPS so view stays clear)
         if (cameraController != null)
         {
             if (cameraController.IsFPSActive && cameraController.fpsCamera != null)
@@ -142,18 +144,15 @@ void Update()
                 hasPlayerTelemetry = true;
                 Vector3 playerEyePos = cameraController.fpsCamera.transform.position;
                 Vector3 radialUp = (playerEyePos - moonCenter.position).normalized;
-                Vector3 chestOrigin = playerEyePos - radialUp * (currentEyeOffset * 0.35f);
 
+                // Evaluate telemetry without rendering beams in first-person view
                 EvaluateAndDrawLOS(
-                    chestOrigin, radialUp, 0f,
+                    playerEyePos, radialUp, 0f,
                     out playerHasSunLOS, out playerHasEarthLOS,
-                    playerSunBeam, playerEarthBeam,
-                    new Color(0.5f, 1f, 0.4f, 0.8f),
-                    new Color(0.3f, 0.95f, 0.85f, 0.8f),
-                    beamScale * 0.75f
+                    playerSunBeam, playerEarthBeam, false,
+                    Color.white, Color.white, 1f
                 );
 
-                // Hide the player's vertical zenith beam while inside FPS POV so it doesn't obstruct overhead view
                 SetBeamEnabled(playerNormalBeam, false);
             }
             else if (cameraController.hasSavedSurfacePos)
@@ -162,13 +161,13 @@ void Update()
                 EvaluateAndDrawLOS(
                     cameraController.savedSurfacePoint, cameraController.savedSurfaceUp, currentEyeOffset,
                     out playerHasSunLOS, out playerHasEarthLOS,
-                    playerSunBeam, playerEarthBeam,
+                    playerSunBeam, playerEarthBeam, showPlayerOrbitalBeams,
                     new Color(0.5f, 1f, 0.4f, 0.85f),
                     new Color(0.3f, 0.95f, 0.85f, 0.85f),
                     beamScale * 0.85f
                 );
 
-                DrawNormalBeacon(playerNormalBeam, cameraController.savedSurfacePoint, cameraController.savedSurfaceUp, beaconLen, beamScale * 0.9f, new Color(0.35f, 1f, 0.55f, 0.85f));
+                DrawNormalBeacon(playerNormalBeam, cameraController.savedSurfacePoint, cameraController.savedSurfaceUp, beaconLen, beamScale * 0.9f, new Color(0.35f, 1f, 0.55f, 0.85f), showPlayerOrbitalBeams);
             }
             else
             {
@@ -178,22 +177,6 @@ void Update()
                 SetBeamEnabled(playerNormalBeam, false);
             }
         }
-    }
-
-    private void DrawNormalBeacon(LineRenderer beam, Vector3 surfaceOrigin, Vector3 radialUp, float length, float widthScale, Color beaconColor)
-    {
-        if (beam == null) return;
-        SetBeamEnabled(beam, showLosBeams);
-        if (!showLosBeams) return;
-
-        beam.startWidth = 1.4f * widthScale;
-        beam.endWidth = 0.2f * widthScale; // Tapers to a sharp zenith pointer in space
-        beam.SetPosition(0, surfaceOrigin);
-        beam.SetPosition(1, surfaceOrigin + radialUp * length);
-
-        Color tipColor = new Color(beaconColor.r, beaconColor.g, beaconColor.b, 0.15f);
-        beam.startColor = beaconColor;
-        beam.endColor = tipColor;
     }
 
     public void SelectLandingSite(Vector3 point, Vector3 normal)
@@ -213,19 +196,15 @@ void Update()
         }
 
         float currentEyeOffset = cameraController != null ? cameraController.eyeHeight : 0.05f;
-        EvaluateAndDrawLOS(point, normal, currentEyeOffset, out hasSunLOS, out hasEarthLOS, null, null, Color.white, Color.white, 1f);
+        EvaluateAndDrawLOS(point, normal, currentEyeOffset, out hasSunLOS, out hasEarthLOS, null, null, false, Color.white, Color.white, 1f);
         Debug.Log($"[Site Selected] Slope: {surfaceSlopeDegrees:F1} deg | Sun LOS: {hasSunLOS} | Earth LOS: {hasEarthLOS}");
     }
 
-    /// <summary>
-    /// Selects a landing site directly from selenographic latitude & longitude in degrees (e.g., -89.54f, 0f for Shackleton Rim).
-    /// </summary>
     public void SelectSiteByCoordinates(float latitudeDeg, float longitudeDeg, string siteName = "")
     {
         float latRad = latitudeDeg * Mathf.Deg2Rad;
         float lonRad = longitudeDeg * Mathf.Deg2Rad;
 
-        // Inverse of CelestialSystem / NavigatorUI coordinate convention
         Vector3 radialDir = new Vector3(
             Mathf.Cos(latRad) * Mathf.Sin(lonRad),
             Mathf.Sin(latRad),
@@ -252,7 +231,7 @@ void Update()
     public void EvaluateAndDrawLOS(
         Vector3 surfacePoint, Vector3 normal, float heightOffset,
         out bool sunClear, out bool earthClear,
-        LineRenderer sunBeam, LineRenderer earthBeam,
+        LineRenderer sunBeam, LineRenderer earthBeam, bool drawBeams,
         Color clearSunColor, Color clearEarthColor, float widthScale)
     {
         Vector3 origin = surfacePoint + normal * heightOffset;
@@ -266,8 +245,8 @@ void Update()
 
         if (sunBeam != null)
         {
-            SetBeamEnabled(sunBeam, showLosBeams);
-            if (showLosBeams)
+            SetBeamEnabled(sunBeam, drawBeams);
+            if (drawBeams)
             {
                 sunBeam.startWidth = 1.6f * widthScale;
                 sunBeam.endWidth = 1.2f * widthScale;
@@ -290,8 +269,8 @@ void Update()
 
         if (earthBeam != null)
         {
-            SetBeamEnabled(earthBeam, showLosBeams);
-            if (showLosBeams)
+            SetBeamEnabled(earthBeam, drawBeams);
+            if (drawBeams)
             {
                 earthBeam.startWidth = 1.6f * widthScale;
                 earthBeam.endWidth = 1.2f * widthScale;
@@ -305,6 +284,22 @@ void Update()
         }
     }
 
+    private void DrawNormalBeacon(LineRenderer beam, Vector3 surfaceOrigin, Vector3 radialUp, float length, float widthScale, Color beaconColor, bool drawBeam)
+    {
+        if (beam == null) return;
+        SetBeamEnabled(beam, drawBeam);
+        if (!drawBeam) return;
+
+        beam.startWidth = 1.4f * widthScale;
+        beam.endWidth = 0.2f * widthScale;
+        beam.SetPosition(0, surfaceOrigin);
+        beam.SetPosition(1, surfaceOrigin + radialUp * length);
+
+        Color tipColor = new Color(beaconColor.r, beaconColor.g, beaconColor.b, 0.15f);
+        beam.startColor = beaconColor;
+        beam.endColor = tipColor;
+    }
+
     private void SetBeamEnabled(LineRenderer lr, bool enabled)
     {
         if (lr != null && lr.enabled != enabled)
@@ -313,7 +308,6 @@ void Update()
 
     private bool CheckRadioDiffraction(Vector3 origin, Vector3 target)
     {
-        // TODO: Implement Fresnel zone / knife-edge diffraction loss calculation
         return false;
     }
 

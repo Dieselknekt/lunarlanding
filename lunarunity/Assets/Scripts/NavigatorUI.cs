@@ -38,7 +38,7 @@ public class NavigatorUI : MonoBehaviour
     public Button returnToAstronautButton;
     public TMP_Text controlsHintText;
 
-    [Header("Step 2: 3D LOS Beams & Mission Bookmarks")]
+    [Header("3D LOS Beams & Mission Bookmarks")]
     public Button toggleBeamsButton;
     public TMP_Text toggleBeamsButtonText;
     public Button bookmarkShackletonButton;
@@ -48,6 +48,11 @@ public class NavigatorUI : MonoBehaviour
     public LunarLightingVisualizer lightingVisualizer;
     public Slider stylizedLightingSlider;
     public TMP_Text stylizedLightingText;
+
+    [Header("30-Day Mission Window Analysis")]
+    public MissionWindowAnalyzer windowAnalyzer;
+    public Button analyze30DayButton;
+    public TMP_Text analysisReportText;
 
     [Header("Pause & Settings Menu [Esc]")]
     public GameObject pauseMenuPanel;
@@ -125,6 +130,11 @@ public class NavigatorUI : MonoBehaviour
             stylizedLightingSlider.onValueChanged.AddListener(OnStylizedLightingChanged);
             OnStylizedLightingChanged(lightingVisualizer.stylizedBlend);
         }
+        if (analyze30DayButton != null)
+            analyze30DayButton.onClick.AddListener(OnAnalyze30DayClicked);
+
+        if (analysisReportText != null)
+            analysisReportText.text = "Select a site & click 'Analyze 30-Day Window'.";
     }
 
     private void SetupPauseMenu()
@@ -181,7 +191,7 @@ public class NavigatorUI : MonoBehaviour
             playerCoordinatesText, playerSunLosText, playerEarthLosText,
             viewSwitchButtonText, controlsHintText,
             sensitivityValueText, orbitSpeedValueText, zoomSpeedValueText, scaleModeButtonText,
-            toggleBeamsButtonText, stylizedLightingText
+            toggleBeamsButtonText, stylizedLightingText, analysisReportText
         };
 
         foreach (var t in allTexts)
@@ -460,7 +470,7 @@ public class NavigatorUI : MonoBehaviour
     {
         if (losSystem != null)
         {
-            losSystem.showLosBeams = !losSystem.showLosBeams;
+            losSystem.showSiteBeams = !losSystem.showSiteBeams;
             UpdateBeamsButtonLabel();
         }
     }
@@ -469,7 +479,7 @@ public class NavigatorUI : MonoBehaviour
     {
         if (toggleBeamsButtonText != null && losSystem != null)
         {
-            toggleBeamsButtonText.text = losSystem.showLosBeams ? "3D LOS Lasers: ON" : "3D LOS Lasers: OFF";
+            toggleBeamsButtonText.text = losSystem.showSiteBeams ? "Site LOS Beams: ON" : "Site LOS Beams: OFF";
         }
     }
     private void OnStylizedLightingChanged(float val)
@@ -483,5 +493,31 @@ public class NavigatorUI : MonoBehaviour
             string label = pct == 0 ? "REAL" : (pct == 100 ? "STYLIZED" : $"{pct}%");
             stylizedLightingText.text = $"LOS Map: {label}";
         }
+    }
+    public void OnAnalyze30DayClicked()
+    {
+        if (windowAnalyzer == null || analysisReportText == null) return;
+
+        if (losSystem == null || !losSystem.hasSelectedSite)
+        {
+            analysisReportText.text = "<color=#F87171>Select a landing site first!</color>";
+            return;
+        }
+
+        MissionWindowReport r = windowAnalyzer.AnalyzeSelectedSite();
+        if (!r.isValid) return;
+
+        string gradeColor = r.grade.StartsWith("A") || r.grade.StartsWith("B") ? "#4ADE80"
+                          : (r.grade.StartsWith("C") ? "#FACC15" : "#F87171");
+
+        float shadowDays = r.longestShadowHours / 24f;
+        float blackoutDays = r.longestBlackoutHours / 24f;
+
+        analysisReportText.text =
+            $"<b>30-Day Mission Forecast</b>\n" +
+            $"Grade: <color={gradeColor}><b>{r.grade}</b></color>\n" +
+            $"Solar Power: <b>{r.sunIlluminationPercent:F1}%</b> | Earth Comms: <b>{r.earthCommsPercent:F1}%</b>\n" +
+            $"Max Shadow: <b>{r.longestShadowHours:F0}h</b> ({shadowDays:F1}d) | Max Blackout: <b>{r.longestBlackoutHours:F0}h</b> ({blackoutDays:F1}d)\n" +
+            $"<i>{r.summaryAssessment}</i>";
     }
 }

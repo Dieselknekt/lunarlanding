@@ -5,4 +5,21 @@ Add Earth blocking/bending Sunlight
 Transition from one camera to the next
 
 Optimal launch trajectories depending on launch sites (and calendar date)
-Adjust Zoom Speed to be dependent on distance from Moon
+Peenemunde
+Andöya
+Plesetsk
+El Arenosillo
+Esrange
+Hammaguir
+Manitoba
+White Sands
+Poker Flat
+Nevada Test and Training
+Wallops Flight Facility Delmarva Penisula
+Cape Canaeral
+Vandenberg
+Natal-Barreira Do Inferno
+Mahia Peninsula
+
+Select which LOS beams to activate/deactivate and when
+Adjust stylized colors to be more extreme
