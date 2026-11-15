@@ -1,0 +1,3 @@
+Update Moon model
+Add reflection from Earth (Other objects)?
+Add Earth blocking/bending sunlight
