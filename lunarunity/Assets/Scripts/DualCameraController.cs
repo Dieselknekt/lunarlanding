@@ -12,7 +12,7 @@ public class DualCameraController : MonoBehaviour
 
     [Header("Orbital View Settings")]
     public float orbitDistance = 2500f;
-    public float minOrbitDistance = 1050f;
+    public float minOrbitDistance = 1015f;
     public float maxOrbitDistance = 8000f;
     public float orbitSpeed = 0.15f;
     public float zoomSpeed = 0.25f;
@@ -40,40 +40,101 @@ public class DualCameraController : MonoBehaviour
     public Vector3 savedSurfacePoint;
     public Vector3 savedSurfaceUp;
 
-    [Header("Lunar Surface FPS Settings")]
-    public float walkSpeed = 12f;
-    public float sprintSpeed = 35f;
-    public float flySpeed = 60f;
+    [Header("Scale Profile (Realistic Compromise Default)")]
+    public bool isDebugScale = false;
+    public float eyeHeight = 0.05f;
+    public float walkSpeed = 0.4f;
+    public float sprintSpeed = 2.5f;
+    public float flySpeed = 15f;
+    public float lunarGravity = 0.45f;
+    public float jumpForce = 0.35f;
+
+    [Header("FPS Controls")]
     public float lookSensitivity = 0.04f;
-    public float lunarGravity = 9.8f;
-    public float jumpForce = 7.5f;
 
     private float fpsPitch = 0f;
     private bool isFPS = false;
     private bool isNoclip = false;
     private bool isCursorUnlocked = false;
+    private bool isPaused = false;
     private float verticalVelocity = 0f;
-    private float currentHeightAboveSurface = 1.7f;
-    private const float EyeHeight = 1.7f;
+    private float currentHeightAboveSurface = 0.05f;
 
     public bool IsFPSActive => isFPS;
     public bool IsCursorUnlocked => isCursorUnlocked;
+    public bool IsPaused => isPaused;
 
     void Start()
     {
         if (siteMarker != null)
-        {
             initialMarkerScale = siteMarker.localScale;
-        }
+
         if (playerMarker != null)
-        {
             playerMarker.gameObject.SetActive(false);
-        }
+
+        ApplyScaleProfile(isDebugScale);
         SetImmediateOrbital();
+    }
+
+    public void ApplyScaleProfile(bool useDebug)
+    {
+        isDebugScale = useDebug;
+
+        if (useDebug)
+        {
+            // Debug / Fast-Travel Scale (original large values)
+            eyeHeight = 1.7f;
+            walkSpeed = 12f;
+            sprintSpeed = 35f;
+            flySpeed = 60f;
+            lunarGravity = 9.8f;
+            jumpForce = 7.5f;
+            if (fpsCamera != null) fpsCamera.nearClipPlane = 0.3f;
+        }
+        else
+        {
+            // Realistic Compromise Scale (Default - vast horizon & towering craters)
+            eyeHeight = 0.05f;
+            walkSpeed = 0.4f;
+            sprintSpeed = 2.5f;
+            flySpeed = 15f;
+            lunarGravity = 0.45f;
+            jumpForce = 0.35f;
+            if (fpsCamera != null) fpsCamera.nearClipPlane = 0.01f;
+        }
+
+        // If currently standing on the surface, smoothly adjust eye height immediately
+        if (isFPS && !isNoclip)
+        {
+            currentHeightAboveSurface = eyeHeight;
+            verticalVelocity = 0f;
+        }
+    }
+
+    public void SetPaused(bool paused)
+    {
+        isPaused = paused;
+        if (isPaused)
+        {
+            Cursor.lockState = CursorLockMode.None;
+            Cursor.visible = true;
+        }
+        else
+        {
+            if (isFPS)
+                SetCursorUnlocked(isCursorUnlocked);
+            else
+            {
+                Cursor.lockState = CursorLockMode.None;
+                Cursor.visible = true;
+            }
+        }
     }
 
     void Update()
     {
+        if (isPaused) return;
+
         var keyboard = Keyboard.current;
         var mouse = Mouse.current;
         if (keyboard == null || mouse == null) return;
@@ -178,7 +239,10 @@ public class DualCameraController : MonoBehaviour
             radialUp = (fpsCamera.transform.position - moonCenter.position).normalized;
             float surfaceRadius = GetSurfaceRadiusAtDirection(radialUp);
 
-            bool isGrounded = currentHeightAboveSurface <= EyeHeight + 0.05f;
+            // Proportional grounded tolerance so both 0.05 and 1.7 eye heights jump reliably
+            float groundedTolerance = Mathf.Max(0.002f, eyeHeight * 0.05f);
+            bool isGrounded = currentHeightAboveSurface <= eyeHeight + groundedTolerance;
+
             if (isGrounded && keyboard.spaceKey.wasPressedThisFrame)
             {
                 verticalVelocity = jumpForce;
@@ -191,9 +255,9 @@ public class DualCameraController : MonoBehaviour
                 currentHeightAboveSurface += verticalVelocity * Time.deltaTime;
             }
 
-            if (currentHeightAboveSurface <= EyeHeight)
+            if (currentHeightAboveSurface <= eyeHeight)
             {
-                currentHeightAboveSurface = EyeHeight;
+                currentHeightAboveSurface = eyeHeight;
                 verticalVelocity = 0f;
             }
 
@@ -231,7 +295,6 @@ public class DualCameraController : MonoBehaviour
             initialMarkerScale = siteMarker.localScale;
         }
 
-        // Hide green PlayerMarker while astronaut is active on the surface
         if (playerMarker != null)
         {
             playerMarker.gameObject.SetActive(false);
@@ -239,14 +302,14 @@ public class DualCameraController : MonoBehaviour
 
         transStartPos = savedOrbitalPos;
         transStartRot = savedOrbitalRot;
-        transEndPos = surfacePoint + radialUp * EyeHeight;
+        transEndPos = surfacePoint + radialUp * eyeHeight;
 
         Vector3 tangentForward = Vector3.Cross(radialUp, Vector3.right);
         if (tangentForward.sqrMagnitude < 0.01f) tangentForward = Vector3.Cross(radialUp, Vector3.forward);
         transEndRot = Quaternion.LookRotation(tangentForward.normalized, radialUp);
 
         fpsPitch = 0f;
-        currentHeightAboveSurface = EyeHeight;
+        currentHeightAboveSurface = eyeHeight;
         verticalVelocity = 0f;
         isNoclip = false;
         isCursorUnlocked = false;
@@ -268,7 +331,6 @@ public class DualCameraController : MonoBehaviour
     {
         if (isTransitioning) return;
 
-        // Save astronaut's exact surface coordinates and place the green PlayerMarker there
         Vector3 radialUp = (fpsCamera.transform.position - moonCenter.position).normalized;
         float surfaceRadius = GetSurfaceRadiusAtDirection(radialUp);
         savedSurfaceUp = radialUp;
@@ -310,10 +372,12 @@ public class DualCameraController : MonoBehaviour
         orbitalCamera.transform.position = Vector3.Lerp(transStartPos, transEndPos, smoothT);
         orbitalCamera.transform.rotation = Quaternion.Slerp(transStartRot, transEndRot, smoothT);
 
+        // Shrink SiteMarker proportionally to the active scale profile (0.01x in realistic scale, 0.1x in debug scale)
+        float targetShrinkFactor = isDebugScale ? 0.1f : 0.01f;
         if (siteMarker != null)
         {
-            Vector3 fromScale = transitioningToFPS ? initialMarkerScale : initialMarkerScale * 0.1f;
-            Vector3 toScale = transitioningToFPS ? initialMarkerScale * 0.1f : initialMarkerScale;
+            Vector3 fromScale = transitioningToFPS ? initialMarkerScale : initialMarkerScale * targetShrinkFactor;
+            Vector3 toScale = transitioningToFPS ? initialMarkerScale * targetShrinkFactor : initialMarkerScale;
             siteMarker.localScale = Vector3.Lerp(fromScale, toScale, smoothT);
         }
 
@@ -346,5 +410,12 @@ public class DualCameraController : MonoBehaviour
         orbitalCamera.gameObject.SetActive(true);
         Cursor.lockState = CursorLockMode.None;
         Cursor.visible = true;
+    }
+    public void FocusOrbitalOnDirection(Vector3 radialDir)
+    {
+        if (isFPS) return;
+        radialDir.Normalize();
+        pitch = Mathf.Clamp(Mathf.Asin(Mathf.Clamp(radialDir.y, -1f, 1f)) * Mathf.Rad2Deg, -85f, 85f);
+        yaw = Mathf.Atan2(radialDir.x, radialDir.z) * Mathf.Rad2Deg;
     }
 }

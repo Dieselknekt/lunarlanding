@@ -107,3 +107,7 @@ InitTestScene*.unity*
 
 # Auto-generated cache in Assets folder
 /[Aa]ssets/[Ss]ceneDependencyCache*
+
+# Large NASA Moon Kit textures (exceeds GitHub 100MB limit)
+*.tif
+*.tif.meta

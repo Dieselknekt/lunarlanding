@@ -1,6 +1,7 @@
 using System;
 using UnityEngine;
 using UnityEngine.UI;
+using UnityEngine.InputSystem;
 using TMPro;
 
 public class NavigatorUI : MonoBehaviour
@@ -37,8 +38,21 @@ public class NavigatorUI : MonoBehaviour
     public Button returnToAstronautButton;
     public TMP_Text controlsHintText;
 
+    [Header("Pause & Settings Menu [Esc]")]
+    public GameObject pauseMenuPanel;
+    public Slider sensitivitySlider;
+    public TMP_Text sensitivityValueText;
+    public Slider orbitSpeedSlider;
+    public TMP_Text orbitSpeedValueText;
+    public Slider zoomSpeedSlider;
+    public TMP_Text zoomSpeedValueText;
+    public Button scaleModeToggleButton;
+    public TMP_Text scaleModeButtonText;
+    public Button resumeButton;
+
     private double scrubAnchorJ2000;
     private bool isScrubbingTime = false;
+    private bool wasPlayingBeforePause = true;
 
     void Start()
     {
@@ -73,7 +87,54 @@ public class NavigatorUI : MonoBehaviour
             timeScrubSlider.onValueChanged.AddListener(OnTimeScrubChanged);
         }
 
+        SetupPauseMenu();
         ApplyCleanTextFitting();
+    }
+
+    private void SetupPauseMenu()
+    {
+        if (pauseMenuPanel != null)
+            pauseMenuPanel.SetActive(false);
+
+        if (cameraController != null)
+        {
+            if (sensitivitySlider != null)
+            {
+                sensitivitySlider.minValue = 0.005f;
+                sensitivitySlider.maxValue = 0.2f;
+                sensitivitySlider.value = cameraController.lookSensitivity;
+                sensitivitySlider.onValueChanged.AddListener(OnSensitivityChanged);
+                OnSensitivityChanged(cameraController.lookSensitivity);
+            }
+
+            if (orbitSpeedSlider != null)
+            {
+                orbitSpeedSlider.minValue = 0.01f;
+                orbitSpeedSlider.maxValue = 30f;
+                cameraController.orbitSpeed = Mathf.Clamp(cameraController.orbitSpeed, 0.01f, 30f);
+                orbitSpeedSlider.value = cameraController.orbitSpeed;
+                orbitSpeedSlider.onValueChanged.AddListener(OnOrbitSpeedChanged);
+                OnOrbitSpeedChanged(cameraController.orbitSpeed);
+            }
+
+            if (zoomSpeedSlider != null)
+            {
+                zoomSpeedSlider.minValue = 10f;
+                zoomSpeedSlider.maxValue = 500f;
+                cameraController.zoomSpeed = Mathf.Clamp(cameraController.zoomSpeed, 10f, 500f);
+                zoomSpeedSlider.value = cameraController.zoomSpeed;
+                zoomSpeedSlider.onValueChanged.AddListener(OnZoomSpeedChanged);
+                OnZoomSpeedChanged(cameraController.zoomSpeed);
+            }
+        }
+
+        if (scaleModeToggleButton != null)
+            scaleModeToggleButton.onClick.AddListener(OnToggleScaleModeClicked);
+
+        if (resumeButton != null)
+            resumeButton.onClick.AddListener(() => SetPauseMenuOpen(false));
+
+        UpdateScaleButtonLabel();
     }
 
     private void ApplyCleanTextFitting()
@@ -82,7 +143,8 @@ public class NavigatorUI : MonoBehaviour
             timeDisplayText, timeSpeedText, playPauseButtonText,
             siteStatusHeader, coordinatesText, slopeText, sunLosText, earthLosText,
             playerCoordinatesText, playerSunLosText, playerEarthLosText,
-            viewSwitchButtonText, controlsHintText
+            viewSwitchButtonText, controlsHintText,
+            sensitivityValueText, orbitSpeedValueText, zoomSpeedValueText, scaleModeButtonText
         };
 
         foreach (var t in allTexts)
@@ -99,9 +161,75 @@ public class NavigatorUI : MonoBehaviour
 
     void Update()
     {
+        var keyboard = Keyboard.current;
+        if (keyboard != null && keyboard.escapeKey.wasPressedThisFrame)
+        {
+            bool nextOpen = pauseMenuPanel != null && !pauseMenuPanel.activeSelf;
+            SetPauseMenuOpen(nextOpen);
+        }
+
         UpdateTimeUI();
         UpdateTelemetryUI();
         UpdateModeUI();
+    }
+
+    public void SetPauseMenuOpen(bool open)
+    {
+        if (pauseMenuPanel != null)
+            pauseMenuPanel.SetActive(open);
+
+        if (cameraController != null)
+            cameraController.SetPaused(open);
+
+        if (celestialSystem != null)
+        {
+            if (open)
+            {
+                wasPlayingBeforePause = celestialSystem.isPlaying;
+                celestialSystem.isPlaying = false;
+            }
+            else
+            {
+                celestialSystem.isPlaying = wasPlayingBeforePause;
+            }
+        }
+    }
+
+    private void OnSensitivityChanged(float val)
+    {
+        if (cameraController != null) cameraController.lookSensitivity = val;
+        if (sensitivityValueText != null) sensitivityValueText.text = $"Look Sensitivity: {val:F3}";
+    }
+
+    private void OnOrbitSpeedChanged(float val)
+    {
+        if (cameraController != null) cameraController.orbitSpeed = val;
+        if (orbitSpeedValueText != null) orbitSpeedValueText.text = $"Orbit Speed: {val:F2}";
+    }
+
+    private void OnZoomSpeedChanged(float val)
+    {
+        if (cameraController != null) cameraController.zoomSpeed = val;
+        if (zoomSpeedValueText != null) zoomSpeedValueText.text = $"Zoom Speed: {val:F2}";
+    }
+
+    private void OnToggleScaleModeClicked()
+    {
+        if (cameraController != null)
+        {
+            cameraController.ApplyScaleProfile(!cameraController.isDebugScale);
+            UpdateScaleButtonLabel();
+        }
+    }
+
+    private void UpdateScaleButtonLabel()
+    {
+        if (scaleModeButtonText != null && cameraController != null)
+        {
+            scaleModeButtonText.text = cameraController.isDebugScale
+                ? "Scale Mode: DEBUG (Fast / Giant)"
+                : "Scale Mode: REALISTIC (Default)";
+        }
     }
 
     private void UpdateTimeUI()
@@ -136,7 +264,6 @@ public class NavigatorUI : MonoBehaviour
     {
         if (losSystem == null) return;
 
-        // 1. Selected Landing Site Telemetry
         if (!losSystem.hasSelectedSite)
         {
             if (siteStatusHeader != null) siteStatusHeader.text = "LANDING SITE & ASTRONAUT HUD";
@@ -165,7 +292,6 @@ public class NavigatorUI : MonoBehaviour
                     : "Site Earth LOS: <color=#F87171>BLOCKED</color>";
         }
 
-        // 2. Astronaut / Player Telemetry (Active in FPS or saved at PlayerMarker in Orbit)
         if (cameraController != null)
         {
             if (cameraController.IsFPSActive && cameraController.fpsCamera != null)
@@ -236,12 +362,12 @@ public class NavigatorUI : MonoBehaviour
             if (inOrbit)
             {
                 string resumeHint = cameraController.hasSavedSurfacePos ? " | Resume Pos: [Tab]" : "";
-                controlsHintText.text = $"Orbit: Right-Drag | Zoom: Scroll (+Shift Fast) | Select Site: Left-Click | Land: [F]{resumeHint}";
+                controlsHintText.text = $"Orbit: Right-Drag | Zoom: Scroll (+Shift Fast) | Select Site: Left-Click | Land: [F]{resumeHint} | Menu: [Esc]";
             }
             else
             {
                 string cursorState = cameraController.IsCursorUnlocked ? "UI Mode [Alt/C to Look]" : "Free-Look [Alt/C for UI]";
-                controlsHintText.text = $"Move: [WASD] | Sprint: [Shift] | Jump: [Space] | Noclip: [G] | {cursorState} | Orbit: [Tab]";
+                controlsHintText.text = $"Move: [WASD] | Sprint: [Shift] | Jump: [Space] | Noclip: [G] | {cursorState} | Menu: [Esc]";
             }
         }
     }
