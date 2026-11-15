@@ -13,8 +13,8 @@ public class DualCameraController : MonoBehaviour
     public float orbitDistance = 2500f;
     public float minOrbitDistance = 1050f;
     public float maxOrbitDistance = 8000f;
-    public float orbitSpeed = 15f;
-    public float zoomSpeed = 2f;
+    public float orbitSpeed = 10.0f;
+    public float zoomSpeed = 250.0f;
     private float yaw = 35f;
     private float pitch = 25f;
 
@@ -33,19 +33,29 @@ public class DualCameraController : MonoBehaviour
     private Quaternion savedOrbitalRot;
     private Vector3 initialMarkerScale = Vector3.one;
 
+    [Header("Saved Astronaut Surface Position")]
+    public bool hasSavedSurfacePos = false;
+    public Vector3 savedSurfacePoint;
+    public Vector3 savedSurfaceUp;
+
     [Header("Lunar Surface FPS Settings")]
     public float walkSpeed = 12f;
+    public float sprintSpeed = 35f;
     public float flySpeed = 60f;
-    public float lookSensitivity = 0.15f;
-    public float lunarGravity = 9.8f; // Scaled feel for lunar jump
+    public float lookSensitivity = 0.04f;
+    public float lunarGravity = 9.8f;
     public float jumpForce = 7.5f;
 
     private float fpsPitch = 0f;
     private bool isFPS = false;
     private bool isNoclip = false;
+    private bool isCursorUnlocked = false;
     private float verticalVelocity = 0f;
     private float currentHeightAboveSurface = 1.7f;
     private const float EyeHeight = 1.7f;
+
+    public bool IsFPSActive => isFPS;
+    public bool IsCursorUnlocked => isCursorUnlocked;
 
     void Start()
     {
@@ -75,18 +85,31 @@ public class DualCameraController : MonoBehaviour
             return;
         }
 
-        // Press G in FPS mode to toggle between Lunar Gravity (walk/jump) and Noclip Fly mode
+        // Press Left Alt or C in FPS mode to unlock cursor for UI interaction
+        if (isFPS && (keyboard.leftAltKey.wasPressedThisFrame || keyboard.cKey.wasPressedThisFrame))
+        {
+            SetCursorUnlocked(!isCursorUnlocked);
+        }
+
+        // Press G in FPS mode to toggle between Lunar Gravity and Noclip Fly mode
         if (isFPS && keyboard.gKey.wasPressedThisFrame)
         {
             isNoclip = !isNoclip;
             verticalVelocity = 0f;
-            Debug.Log(isNoclip ? "[Movement Mode] Noclip Free-Fly Enabled (WASD + Space/Shift)" : "[Movement Mode] Lunar Gravity Enabled (WASD + Space to Jump)");
+            Debug.Log(isNoclip ? "[Movement Mode] Noclip Free-Fly Enabled" : "[Movement Mode] Lunar Gravity Enabled");
         }
 
         if (isFPS)
             HandleFPS(keyboard, mouse);
         else
             HandleOrbital(mouse);
+    }
+
+    public void SetCursorUnlocked(bool unlocked)
+    {
+        isCursorUnlocked = unlocked;
+        Cursor.lockState = unlocked ? CursorLockMode.None : CursorLockMode.Locked;
+        Cursor.visible = unlocked;
     }
 
     void HandleOrbital(Mouse mouse)
@@ -113,10 +136,13 @@ public class DualCameraController : MonoBehaviour
 
     void HandleFPS(Keyboard keyboard, Mouse mouse)
     {
-        // Mouse look
-        Vector2 mouseDelta = mouse.delta.ReadValue() * lookSensitivity;
-        fpsCamera.transform.Rotate(Vector3.up, mouseDelta.x, Space.Self);
-        fpsPitch = Mathf.Clamp(fpsPitch - mouseDelta.y, -85f, 85f);
+        // Only rotate camera when free-look is active (cursor locked)
+        if (!isCursorUnlocked)
+        {
+            Vector2 mouseDelta = mouse.delta.ReadValue() * lookSensitivity;
+            fpsCamera.transform.Rotate(Vector3.up, mouseDelta.x, Space.Self);
+            fpsPitch = Mathf.Clamp(fpsPitch - mouseDelta.y, -85f, 85f);
+        }
 
         // WASD input
         float h = (keyboard.dKey.isPressed ? 1f : 0f) - (keyboard.aKey.isPressed ? 1f : 0f);
@@ -126,24 +152,19 @@ public class DualCameraController : MonoBehaviour
 
         if (isNoclip)
         {
-            // Free-fly / noclip mode (can pass through terrain)
             float upInput = (keyboard.spaceKey.isPressed ? 1f : 0f) - (keyboard.leftShiftKey.isPressed ? 1f : 0f);
             Vector3 flyMove = (fpsCamera.transform.right * h + fpsCamera.transform.forward * v + radialUp * upInput) * flySpeed * Time.deltaTime;
             fpsCamera.transform.position += flyMove;
         }
         else
         {
-            // Grounded Lunar Gravity mode (cannot clip through the Moon)
+            float currentSpeed = keyboard.leftShiftKey.isPressed ? sprintSpeed : walkSpeed;
             Vector3 moveDir = Vector3.ProjectOnPlane(fpsCamera.transform.right * h + fpsCamera.transform.forward * v, radialUp).normalized;
-            fpsCamera.transform.position += moveDir * walkSpeed * Time.deltaTime;
+            fpsCamera.transform.position += moveDir * currentSpeed * Time.deltaTime;
 
-            // Recalculate radialUp after horizontal movement
             radialUp = (fpsCamera.transform.position - moonCenter.position).normalized;
-
-            // Find exact surface radius underneath the player
             float surfaceRadius = GetSurfaceRadiusAtDirection(radialUp);
 
-            // Jump when grounded
             bool isGrounded = currentHeightAboveSurface <= EyeHeight + 0.05f;
             if (isGrounded && keyboard.spaceKey.wasPressedThisFrame)
             {
@@ -157,7 +178,6 @@ public class DualCameraController : MonoBehaviour
                 currentHeightAboveSurface += verticalVelocity * Time.deltaTime;
             }
 
-            // Clamp to surface so player never clips through the Moon
             if (currentHeightAboveSurface <= EyeHeight)
             {
                 currentHeightAboveSurface = EyeHeight;
@@ -191,11 +211,10 @@ public class DualCameraController : MonoBehaviour
     {
         if (isTransitioning) return;
 
-        // Save exact OrbitalCamera transform to return to later
         savedOrbitalPos = orbitalCamera.transform.position;
         savedOrbitalRot = orbitalCamera.transform.rotation;
 
-        if (siteMarker != null)
+        if (siteMarker != null && !isFPS)
         {
             initialMarkerScale = siteMarker.localScale;
         }
@@ -212,15 +231,31 @@ public class DualCameraController : MonoBehaviour
         currentHeightAboveSurface = EyeHeight;
         verticalVelocity = 0f;
         isNoclip = false;
+        isCursorUnlocked = false;
 
         transitioningToFPS = true;
         isTransitioning = true;
         transitionTimer = 0f;
     }
 
+    public void ReturnToLastSurfacePosition()
+    {
+        if (hasSavedSurfacePos && !isFPS)
+        {
+            SwitchToFPS(savedSurfacePoint, savedSurfaceUp);
+        }
+    }
+
     private void StartTransitionToOrbital()
     {
         if (isTransitioning) return;
+
+        // Save the astronaut's current surface coordinates before lifting off
+        Vector3 radialUp = (fpsCamera.transform.position - moonCenter.position).normalized;
+        float surfaceRadius = GetSurfaceRadiusAtDirection(radialUp);
+        savedSurfaceUp = radialUp;
+        savedSurfacePoint = moonCenter.position + radialUp * surfaceRadius;
+        hasSavedSurfacePos = true;
 
         transStartPos = fpsCamera.transform.position;
         transStartRot = fpsCamera.transform.rotation;
@@ -233,24 +268,23 @@ public class DualCameraController : MonoBehaviour
         orbitalCamera.transform.rotation = transStartRot;
 
         isFPS = false;
-        transitioningToFPS = true;
+        isCursorUnlocked = false;
         transitioningToFPS = false;
         isTransitioning = true;
         transitionTimer = 0f;
         Cursor.lockState = CursorLockMode.None;
+        Cursor.visible = true;
     }
 
     private void HandleTransition()
     {
         transitionTimer += Time.deltaTime;
         float t = Mathf.Clamp01(transitionTimer / transitionDuration);
-        // Smooth ease-in-out curve
         float smoothT = t * t * (3f - 2f * t);
 
         orbitalCamera.transform.position = Vector3.Lerp(transStartPos, transEndPos, smoothT);
         orbitalCamera.transform.rotation = Quaternion.Slerp(transStartRot, transEndRot, smoothT);
 
-        // Smoothly shrink or grow SiteMarker between 1.0x and 0.1x
         if (siteMarker != null)
         {
             Vector3 fromScale = transitioningToFPS ? initialMarkerScale : initialMarkerScale * 0.1f;
@@ -268,7 +302,7 @@ public class DualCameraController : MonoBehaviour
                 fpsCamera.gameObject.SetActive(true);
                 fpsCamera.transform.position = transEndPos;
                 fpsCamera.transform.rotation = transEndRot;
-                Cursor.lockState = CursorLockMode.Locked;
+                SetCursorUnlocked(false);
             }
         }
     }
@@ -282,8 +316,10 @@ public class DualCameraController : MonoBehaviour
     {
         isFPS = false;
         isTransitioning = false;
+        isCursorUnlocked = false;
         fpsCamera.gameObject.SetActive(false);
         orbitalCamera.gameObject.SetActive(true);
         Cursor.lockState = CursorLockMode.None;
+        Cursor.visible = true;
     }
 }

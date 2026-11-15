@@ -5,3 +5,4 @@ Add Earth blocking/bending Sunlight
 Transition from one camera to the next
 
 Optimal launch trajectories depending on launch sites (and calendar date)
+Adjust Zoom Speed to be dependent on distance from Moon
