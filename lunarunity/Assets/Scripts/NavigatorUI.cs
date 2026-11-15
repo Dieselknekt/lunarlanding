@@ -75,6 +75,7 @@ public class NavigatorUI : MonoBehaviour
     public Button scaleModeToggleButton;
     public TMP_Text scaleModeButtonText;
     public Button resumeButton;
+    public Button quitButton;
 
     private double scrubAnchorJ2000;
     private bool isScrubbingTime = false;
@@ -205,6 +206,9 @@ public class NavigatorUI : MonoBehaviour
 
         if (resumeButton != null)
             resumeButton.onClick.AddListener(() => SetPauseMenuOpen(false));
+
+        if (quitButton != null)
+            quitButton.onClick.AddListener(OnQuitClicked);
 
         UpdateScaleButtonLabel();
     }
@@ -614,5 +618,14 @@ public class NavigatorUI : MonoBehaviour
             $"Arrival (+{ev.transitDays:F2}d): {ev.arrivalUtcString}\n" +
             $"Descent Angle: {ev.approachAngleDeg:F0}° | Terrain: {(ev.approachTerrainClear ? "CLEAR" : "HAZARD")}\n" +
             $"<i>{ev.verdictSummary}</i>";
+    }
+    public void OnQuitClicked()
+    {
+        Time.timeScale = 1f;
+#if UNITY_EDITOR
+        UnityEditor.EditorApplication.isPlaying = false;
+#else
+        Application.Quit();
+#endif
     }
 }
