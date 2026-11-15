@@ -19,13 +19,17 @@ public class NavigatorUI : MonoBehaviour
     public TMP_Text playPauseButtonText;
     public Button resetDateButton;
 
-    [Header("Site Telemetry HUD")]
+    [Header("Landing Site Telemetry")]
     public TMP_Text siteStatusHeader;
     public TMP_Text coordinatesText;
-    public TMP_Text playerCoordinatesText;
     public TMP_Text slopeText;
     public TMP_Text sunLosText;
     public TMP_Text earthLosText;
+
+    [Header("Astronaut / Player Telemetry")]
+    public TMP_Text playerCoordinatesText;
+    public TMP_Text playerSunLosText;
+    public TMP_Text playerEarthLosText;
 
     [Header("Action & Help")]
     public Button viewSwitchButton;
@@ -76,8 +80,9 @@ public class NavigatorUI : MonoBehaviour
     {
         TMP_Text[] allTexts = {
             timeDisplayText, timeSpeedText, playPauseButtonText,
-            siteStatusHeader, coordinatesText, playerCoordinatesText,
-            slopeText, sunLosText, earthLosText, viewSwitchButtonText, controlsHintText
+            siteStatusHeader, coordinatesText, slopeText, sunLosText, earthLosText,
+            playerCoordinatesText, playerSunLosText, playerEarthLosText,
+            viewSwitchButtonText, controlsHintText
         };
 
         foreach (var t in allTexts)
@@ -85,8 +90,8 @@ public class NavigatorUI : MonoBehaviour
             if (t != null)
             {
                 t.enableAutoSizing = true;
-                t.fontSizeMin = 11f;
-                t.fontSizeMax = 17f;
+                t.fontSizeMin = 10f;
+                t.fontSizeMax = 16f;
                 t.textWrappingMode = TextWrappingModes.Normal;
             }
         }
@@ -131,49 +136,70 @@ public class NavigatorUI : MonoBehaviour
     {
         if (losSystem == null) return;
 
-        // 1. Selected Landing Site Coordinates
+        // 1. Selected Landing Site Telemetry
         if (!losSystem.hasSelectedSite)
         {
-            if (siteStatusHeader != null) siteStatusHeader.text = "NO LANDING SITE SELECTED";
-            if (coordinatesText != null) coordinatesText.text = "Landing Site: None (Left-click Moon)";
-            if (slopeText != null) slopeText.text = "Slope: --";
-            if (sunLosText != null) sunLosText.text = "Sun LOS: --";
-            if (earthLosText != null) earthLosText.text = "Earth LOS: --";
+            if (siteStatusHeader != null) siteStatusHeader.text = "LANDING SITE & ASTRONAUT HUD";
+            if (coordinatesText != null) coordinatesText.text = "Site Pos: None (Left-click Moon)";
+            if (slopeText != null) slopeText.text = "Site Slope: --";
+            if (sunLosText != null) sunLosText.text = "Site Sun LOS: --";
+            if (earthLosText != null) earthLosText.text = "Site Earth LOS: --";
         }
         else
         {
-            if (siteStatusHeader != null) siteStatusHeader.text = "TELEMETRY & SITE DATA";
+            if (siteStatusHeader != null) siteStatusHeader.text = "LANDING SITE & ASTRONAUT HUD";
             if (coordinatesText != null)
-                coordinatesText.text = $"Landing Site: {FormatSelenographicCoords(losSystem.selectedPoint)}";
+                coordinatesText.text = $"Site Pos: {FormatSelenographicCoords(losSystem.selectedPoint)}";
 
             if (slopeText != null)
-                slopeText.text = $"Terrain Slope: {losSystem.surfaceSlopeDegrees:F1}°";
+                slopeText.text = $"Site Slope: {losSystem.surfaceSlopeDegrees:F1}°";
 
             if (sunLosText != null)
                 sunLosText.text = losSystem.hasSunLOS
-                    ? "Sun LOS: <color=#4ADE80>CLEAR (Solar Active)</color>"
-                    : "Sun LOS: <color=#F87171>BLOCKED (Shadow)</color>";
+                    ? "Site Sun LOS: <color=#4ADE80>CLEAR</color>"
+                    : "Site Sun LOS: <color=#F87171>BLOCKED</color>";
 
             if (earthLosText != null)
                 earthLosText.text = losSystem.hasEarthLOS
-                    ? "Earth LOS: <color=#4ADE80>CLEAR (Comms Active)</color>"
-                    : "Earth LOS: <color=#F87171>BLOCKED (No Signal)</color>";
+                    ? "Site Earth LOS: <color=#4ADE80>CLEAR</color>"
+                    : "Site Earth LOS: <color=#F87171>BLOCKED</color>";
         }
 
-        // 2. Current or Last Astronaut Coordinates
-        if (playerCoordinatesText != null && cameraController != null)
+        // 2. Astronaut / Player Telemetry (Active in FPS or saved at PlayerMarker in Orbit)
+        if (cameraController != null)
         {
             if (cameraController.IsFPSActive && cameraController.fpsCamera != null)
             {
-                playerCoordinatesText.text = $"Current Pos: {FormatSelenographicCoords(cameraController.fpsCamera.transform.position)}";
+                if (playerCoordinatesText != null)
+                    playerCoordinatesText.text = $"Player Pos: {FormatSelenographicCoords(cameraController.fpsCamera.transform.position)}";
             }
             else if (cameraController.hasSavedSurfacePos)
             {
-                playerCoordinatesText.text = $"Last Surface Pos: {FormatSelenographicCoords(cameraController.savedSurfacePoint)}";
+                if (playerCoordinatesText != null)
+                    playerCoordinatesText.text = $"Player Marker: {FormatSelenographicCoords(cameraController.savedSurfacePoint)}";
             }
             else
             {
-                playerCoordinatesText.text = "Current Pos: In Orbit";
+                if (playerCoordinatesText != null)
+                    playerCoordinatesText.text = "Player Pos: In Orbit";
+            }
+
+            if (losSystem.hasPlayerTelemetry)
+            {
+                if (playerSunLosText != null)
+                    playerSunLosText.text = losSystem.playerHasSunLOS
+                        ? "Player Sun LOS: <color=#4ADE80>CLEAR</color>"
+                        : "Player Sun LOS: <color=#F87171>BLOCKED</color>";
+
+                if (playerEarthLosText != null)
+                    playerEarthLosText.text = losSystem.playerHasEarthLOS
+                        ? "Player Earth LOS: <color=#4ADE80>CLEAR</color>"
+                        : "Player Earth LOS: <color=#F87171>BLOCKED</color>";
+            }
+            else
+            {
+                if (playerSunLosText != null) playerSunLosText.text = "Player Sun LOS: --";
+                if (playerEarthLosText != null) playerEarthLosText.text = "Player Earth LOS: --";
             }
         }
     }
@@ -209,7 +235,8 @@ public class NavigatorUI : MonoBehaviour
         {
             if (inOrbit)
             {
-                controlsHintText.text = "Orbit: Right-Drag | Zoom: Scroll | Select Site: Left-Click | Land: [F]";
+                string resumeHint = cameraController.hasSavedSurfacePos ? " | Resume Pos: [Tab]" : "";
+                controlsHintText.text = $"Orbit: Right-Drag | Zoom: Scroll (+Shift Fast) | Select Site: Left-Click | Land: [F]{resumeHint}";
             }
             else
             {

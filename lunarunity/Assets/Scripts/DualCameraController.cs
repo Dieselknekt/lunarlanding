@@ -8,13 +8,15 @@ public class DualCameraController : MonoBehaviour
     public Camera fpsCamera;
     public Transform moonCenter;
     public Transform siteMarker;
+    public Transform playerMarker;
 
     [Header("Orbital View Settings")]
     public float orbitDistance = 2500f;
     public float minOrbitDistance = 1050f;
     public float maxOrbitDistance = 8000f;
-    public float orbitSpeed = 10.0f;
-    public float zoomSpeed = 250.0f;
+    public float orbitSpeed = 0.15f;
+    public float zoomSpeed = 0.25f;
+    public float zoomSprintMultiplier = 5f;
     private float yaw = 35f;
     private float pitch = 25f;
 
@@ -63,6 +65,10 @@ public class DualCameraController : MonoBehaviour
         {
             initialMarkerScale = siteMarker.localScale;
         }
+        if (playerMarker != null)
+        {
+            playerMarker.gameObject.SetActive(false);
+        }
         SetImmediateOrbital();
     }
 
@@ -78,11 +84,19 @@ public class DualCameraController : MonoBehaviour
             return;
         }
 
-        // Press Tab to smoothly return from surface FPS view to Orbital View
-        if (isFPS && keyboard.tabKey.wasPressedThisFrame)
+        // Press Tab to toggle between Lunar Surface (FPS) and Orbital View (returning to last surface pos)
+        if (keyboard.tabKey.wasPressedThisFrame)
         {
-            StartTransitionToOrbital();
-            return;
+            if (isFPS)
+            {
+                StartTransitionToOrbital();
+                return;
+            }
+            else if (hasSavedSurfacePos)
+            {
+                ReturnToLastSurfacePosition();
+                return;
+            }
         }
 
         // Press Left Alt or C in FPS mode to unlock cursor for UI interaction
@@ -102,7 +116,7 @@ public class DualCameraController : MonoBehaviour
         if (isFPS)
             HandleFPS(keyboard, mouse);
         else
-            HandleOrbital(mouse);
+            HandleOrbital(keyboard, mouse);
     }
 
     public void SetCursorUnlocked(bool unlocked)
@@ -112,7 +126,7 @@ public class DualCameraController : MonoBehaviour
         Cursor.visible = unlocked;
     }
 
-    void HandleOrbital(Mouse mouse)
+    void HandleOrbital(Keyboard keyboard, Mouse mouse)
     {
         if (mouse.rightButton.isPressed)
         {
@@ -125,7 +139,8 @@ public class DualCameraController : MonoBehaviour
         float scroll = mouse.scroll.ReadValue().y;
         if (Mathf.Abs(scroll) > 0.01f)
         {
-            orbitDistance -= scroll * zoomSpeed;
+            float currentZoomSpeed = keyboard.leftShiftKey.isPressed ? zoomSpeed * zoomSprintMultiplier : zoomSpeed;
+            orbitDistance -= scroll * currentZoomSpeed;
             orbitDistance = Mathf.Clamp(orbitDistance, minOrbitDistance, maxOrbitDistance);
         }
 
@@ -136,7 +151,6 @@ public class DualCameraController : MonoBehaviour
 
     void HandleFPS(Keyboard keyboard, Mouse mouse)
     {
-        // Only rotate camera when free-look is active (cursor locked)
         if (!isCursorUnlocked)
         {
             Vector2 mouseDelta = mouse.delta.ReadValue() * lookSensitivity;
@@ -144,7 +158,6 @@ public class DualCameraController : MonoBehaviour
             fpsPitch = Mathf.Clamp(fpsPitch - mouseDelta.y, -85f, 85f);
         }
 
-        // WASD input
         float h = (keyboard.dKey.isPressed ? 1f : 0f) - (keyboard.aKey.isPressed ? 1f : 0f);
         float v = (keyboard.wKey.isPressed ? 1f : 0f) - (keyboard.sKey.isPressed ? 1f : 0f);
 
@@ -187,7 +200,6 @@ public class DualCameraController : MonoBehaviour
             fpsCamera.transform.position = moonCenter.position + radialUp * (surfaceRadius + currentHeightAboveSurface);
         }
 
-        // Align camera horizon to spherical lunar normal
         Vector3 finalUp = (fpsCamera.transform.position - moonCenter.position).normalized;
         Vector3 forwardProjected = Vector3.ProjectOnPlane(fpsCamera.transform.forward, finalUp).normalized;
         if (forwardProjected.sqrMagnitude < 0.001f)
@@ -217,6 +229,12 @@ public class DualCameraController : MonoBehaviour
         if (siteMarker != null && !isFPS)
         {
             initialMarkerScale = siteMarker.localScale;
+        }
+
+        // Hide green PlayerMarker while astronaut is active on the surface
+        if (playerMarker != null)
+        {
+            playerMarker.gameObject.SetActive(false);
         }
 
         transStartPos = savedOrbitalPos;
@@ -250,12 +268,19 @@ public class DualCameraController : MonoBehaviour
     {
         if (isTransitioning) return;
 
-        // Save the astronaut's current surface coordinates before lifting off
+        // Save astronaut's exact surface coordinates and place the green PlayerMarker there
         Vector3 radialUp = (fpsCamera.transform.position - moonCenter.position).normalized;
         float surfaceRadius = GetSurfaceRadiusAtDirection(radialUp);
         savedSurfaceUp = radialUp;
         savedSurfacePoint = moonCenter.position + radialUp * surfaceRadius;
         hasSavedSurfacePos = true;
+
+        if (playerMarker != null)
+        {
+            playerMarker.gameObject.SetActive(true);
+            playerMarker.position = savedSurfacePoint;
+            playerMarker.up = savedSurfaceUp;
+        }
 
         transStartPos = fpsCamera.transform.position;
         transStartRot = fpsCamera.transform.rotation;

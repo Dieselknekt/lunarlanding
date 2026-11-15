@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
+using UnityEngine.EventSystems;
 
 public class LunarLOSAndLanding : MonoBehaviour
 {
@@ -18,6 +19,11 @@ public class LunarLOSAndLanding : MonoBehaviour
     public bool hasEarthLOS;
     public float surfaceSlopeDegrees;
 
+    [Header("Player / Astronaut Telemetry")]
+    public bool hasPlayerTelemetry = false;
+    public bool playerHasSunLOS;
+    public bool playerHasEarthLOS;
+
     [Header("Visual Marker")]
     public Transform siteMarker;
 
@@ -27,9 +33,15 @@ public class LunarLOSAndLanding : MonoBehaviour
         var keyboard = Keyboard.current;
         if (mouse == null || keyboard == null) return;
 
+        bool inOrbit = orbitalCamera != null && orbitalCamera.gameObject.activeInHierarchy;
+
         // Left-click on the Moon in Orbital View to select and analyze a landing site
-        if (orbitalCamera != null && orbitalCamera.gameObject.activeInHierarchy && mouse.leftButton.wasPressedThisFrame)
+        if (inOrbit && mouse.leftButton.wasPressedThisFrame)
         {
+            if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject())
+            {
+                return;
+            }
             Vector2 mousePos = mouse.position.ReadValue();
             Ray ray = orbitalCamera.ScreenPointToRay(mousePos);
             if (Physics.Raycast(ray, out RaycastHit hit))
@@ -38,15 +50,36 @@ public class LunarLOSAndLanding : MonoBehaviour
             }
         }
 
-        // Continuously evaluate LOS for the selected site as simulation time progresses
+        // 1. Always evaluate LOS for the selected Landing Site if one exists
         if (hasSelectedSite)
         {
-            EvaluateLOS(selectedPoint, selectedNormal);
+            EvaluateLOSAtPoint(selectedPoint, selectedNormal, 1.7f, out hasSunLOS, out hasEarthLOS);
 
             // Press 'F' to land at the selected site and enter FPS POV
-            if (orbitalCamera != null && orbitalCamera.gameObject.activeInHierarchy && keyboard.fKey.wasPressedThisFrame)
+            if (inOrbit && keyboard.fKey.wasPressedThisFrame)
             {
                 EnterFPSAtSelectedSite();
+            }
+        }
+
+        // 2. Always evaluate LOS for the Astronaut (active FPS camera or saved PlayerMarker surface position)
+        if (cameraController != null)
+        {
+            if (cameraController.IsFPSActive && cameraController.fpsCamera != null)
+            {
+                hasPlayerTelemetry = true;
+                Vector3 playerEyePos = cameraController.fpsCamera.transform.position;
+                Vector3 radialUp = (playerEyePos - moonCenter.position).normalized;
+                EvaluateLOSAtPoint(playerEyePos, radialUp, 0f, out playerHasSunLOS, out playerHasEarthLOS);
+            }
+            else if (cameraController.hasSavedSurfacePos)
+            {
+                hasPlayerTelemetry = true;
+                EvaluateLOSAtPoint(cameraController.savedSurfacePoint, cameraController.savedSurfaceUp, 1.7f, out playerHasSunLOS, out playerHasEarthLOS);
+            }
+            else
+            {
+                hasPlayerTelemetry = false;
             }
         }
     }
@@ -68,25 +101,25 @@ public class LunarLOSAndLanding : MonoBehaviour
             siteMarker.up = radialUp;
         }
 
-        EvaluateLOS(point, normal);
-        Debug.Log($"[Site Selected] Slope: {surfaceSlopeDegrees:F1} deg | Sun LOS: {hasSunLOS} | Earth LOS: {hasEarthLOS} | Press 'F' for FPS View");
+        EvaluateLOSAtPoint(point, normal, 1.7f, out hasSunLOS, out hasEarthLOS);
+        Debug.Log($"[Site Selected] Slope: {surfaceSlopeDegrees:F1} deg | Sun LOS: {hasSunLOS} | Earth LOS: {hasEarthLOS}");
     }
 
-    public void EvaluateLOS(Vector3 surfacePoint, Vector3 normal)
+    public void EvaluateLOSAtPoint(Vector3 surfacePoint, Vector3 normal, float heightOffset, out bool sunClear, out bool earthClear)
     {
-        Vector3 origin = surfacePoint + normal * 0.5f;
+        Vector3 origin = surfacePoint + normal * heightOffset;
 
         // 1. Line-of-Sight to the Sun
         Vector3 toSun = (sunVisual.position - origin).normalized;
         float distToSun = Vector3.Distance(origin, sunVisual.position);
-        hasSunLOS = !Physics.Raycast(origin, toSun, distToSun);
+        sunClear = !Physics.Raycast(origin, toSun, distToSun);
 
         // 2. Line-of-Sight to the Earth (Optical + hook for radio wave diffraction)
         Vector3 toEarth = (earthVisual.position - origin).normalized;
         float distToEarth = Vector3.Distance(origin, earthVisual.position);
         bool directEarthLOS = !Physics.Raycast(origin, toEarth, distToEarth);
 
-        hasEarthLOS = directEarthLOS || CheckRadioDiffraction(origin, earthVisual.position);
+        earthClear = directEarthLOS || CheckRadioDiffraction(origin, earthVisual.position);
     }
 
     private bool CheckRadioDiffraction(Vector3 origin, Vector3 target)
