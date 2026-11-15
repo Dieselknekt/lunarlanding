@@ -22,11 +22,11 @@ public class LunarLightingVisualizer : MonoBehaviour
     public float maxEarthshineIntensity = 0.22f;
     public Color realEarthshineColor = new Color(0.55f, 0.72f, 1f);
 
-    [Header("Stylized LOS Heatmap Settings")]
-    public float stylizedSunIntensity = 2.2f;
-    public Color stylizedSunColor = new Color(1f, 0.82f, 0.1f);      // Warm Yellow
-    public float stylizedEarthIntensity = 1.9f;
-    public Color stylizedEarthColor = new Color(0.05f, 0.65f, 1f);    // Deep Cyan-Blue (Yellow + Cyan = Green!)
+    [Header("Stylized High-Contrast LOS Heatmap")]
+    public float stylizedSunIntensity = 4.2f;
+    public Color stylizedSunColor = new Color(1f, 0.85f, 0.0f);       // Pure Vivid Yellow (0 Blue)
+    public float stylizedEarthIntensity = 4.2f;
+    public Color stylizedEarthColor = new Color(0.0f, 0.55f, 1.0f);    // Pure Vivid Blue-Cyan (0 Red)
 
     void Start()
     {
@@ -67,30 +67,27 @@ public class LunarLightingVisualizer : MonoBehaviour
         Vector3 moonToSun = (sunVisual.position - moonCenter.position).normalized;
         Vector3 moonToEarth = (earthVisual.position - moonCenter.position).normalized;
 
-        // Orient both directional lights toward the Moon's center
         if (sunDirectionalLight != null)
         {
             sunDirectionalLight.transform.rotation = Quaternion.LookRotation(-moonToSun, Vector3.up);
         }
         earthDirectionalLight.transform.rotation = Quaternion.LookRotation(-moonToEarth, Vector3.up);
 
-        // Calculate physical Earthshine phase factor:
-        // When Sun and Earth are opposite from Moon's perspective (angle ~180 deg, i.e., New Moon), Earth appears "Full" to the Moon (factor = 1.0).
-        // When Sun and Earth are in the same direction (angle ~0 deg, i.e., Full Moon), Earth appears "New" (factor = 0.0).
+        // Physical Earthshine phase factor
         float cosAngle = Vector3.Dot(moonToSun, moonToEarth);
         float earthPhaseIllumination = Mathf.Clamp01((1f - cosAngle) * 0.5f);
-
-        // Real Earthshine intensity scales smoothly with Earth's illuminated phase
         float currentRealEarthIntensity = maxEarthshineIntensity * Mathf.Pow(earthPhaseIllumination, 1.2f);
 
-        // Blend between Real (0.0) and Stylized LOS Heatmap (1.0)
+        // Apply non-linear boost in stylized mode so colors pop dramatically
+        float curveBlend = Mathf.SmoothStep(0f, 1f, stylizedBlend);
+
         if (sunDirectionalLight != null)
         {
-            sunDirectionalLight.color = Color.Lerp(realSunColor, stylizedSunColor, stylizedBlend);
-            sunDirectionalLight.intensity = Mathf.Lerp(realSunIntensity, stylizedSunIntensity, stylizedBlend);
+            sunDirectionalLight.color = Color.Lerp(realSunColor, stylizedSunColor, curveBlend);
+            sunDirectionalLight.intensity = Mathf.Lerp(realSunIntensity, stylizedSunIntensity, curveBlend);
         }
 
-        earthDirectionalLight.color = Color.Lerp(realEarthshineColor, stylizedEarthColor, stylizedBlend);
-        earthDirectionalLight.intensity = Mathf.Lerp(currentRealEarthIntensity, stylizedEarthIntensity, stylizedBlend);
+        earthDirectionalLight.color = Color.Lerp(realEarthshineColor, stylizedEarthColor, curveBlend);
+        earthDirectionalLight.intensity = Mathf.Lerp(currentRealEarthIntensity, stylizedEarthIntensity, curveBlend);
     }
 }

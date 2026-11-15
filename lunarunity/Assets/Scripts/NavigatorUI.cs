@@ -54,6 +54,16 @@ public class NavigatorUI : MonoBehaviour
     public Button analyze30DayButton;
     public TMP_Text analysisReportText;
 
+    [Header("Launch Window & Trajectory Planner")]
+    public LaunchTrajectoryPlanner trajectoryPlanner;
+    public Button cycleLaunchSiteButton;
+    public TMP_Text launchSiteButtonText;
+    public Button planTrajectoryButton;
+    public Button nextOptimalWindowButton;
+    public Button playTrajectoryAnimButton;
+    public TMP_Text playTrajectoryAnimText;
+    public TMP_Text trajectoryStatusText;
+
     [Header("Pause & Settings Menu [Esc]")]
     public GameObject pauseMenuPanel;
     public Slider sensitivitySlider;
@@ -135,6 +145,22 @@ public class NavigatorUI : MonoBehaviour
 
         if (analysisReportText != null)
             analysisReportText.text = "Select a site & click 'Analyze 30-Day Window'.";
+
+        if (cycleLaunchSiteButton != null)
+            cycleLaunchSiteButton.onClick.AddListener(OnCycleLaunchSiteClicked);
+
+        if (planTrajectoryButton != null)
+            planTrajectoryButton.onClick.AddListener(OnPlanTrajectoryClicked);
+
+        if (nextOptimalWindowButton != null)
+            nextOptimalWindowButton.onClick.AddListener(OnNextOptimalWindowClicked);
+
+        if (playTrajectoryAnimButton != null)
+            playTrajectoryAnimButton.onClick.AddListener(OnPlayTrajectoryAnimClicked);
+
+        UpdateLaunchSiteLabel();
+        if (trajectoryStatusText != null)
+            trajectoryStatusText.text = "Select a Lunar site, choose Launch Pad & click 'Plan Launch'.";
     }
 
     private void SetupPauseMenu()
@@ -191,7 +217,8 @@ public class NavigatorUI : MonoBehaviour
             playerCoordinatesText, playerSunLosText, playerEarthLosText,
             viewSwitchButtonText, controlsHintText,
             sensitivityValueText, orbitSpeedValueText, zoomSpeedValueText, scaleModeButtonText,
-            toggleBeamsButtonText, stylizedLightingText, analysisReportText
+            toggleBeamsButtonText, stylizedLightingText, analysisReportText, launchSiteButtonText,
+            playTrajectoryAnimText, trajectoryStatusText
         };
 
         foreach (var t in allTexts)
@@ -519,5 +546,73 @@ public class NavigatorUI : MonoBehaviour
             $"Solar Power: <b>{r.sunIlluminationPercent:F1}%</b> | Earth Comms: <b>{r.earthCommsPercent:F1}%</b>\n" +
             $"Max Shadow: <b>{r.longestShadowHours:F0}h</b> ({shadowDays:F1}d) | Max Blackout: <b>{r.longestBlackoutHours:F0}h</b> ({blackoutDays:F1}d)\n" +
             $"<i>{r.summaryAssessment}</i>";
+    }
+    private void UpdateLaunchSiteLabel()
+    {
+        if (launchSiteButtonText != null && trajectoryPlanner != null)
+            launchSiteButtonText.text = $"Pad: {trajectoryPlanner.GetSelectedLaunchSiteName()}";
+    }
+
+    public void OnCycleLaunchSiteClicked()
+    {
+        if (trajectoryPlanner == null) return;
+        trajectoryPlanner.CycleLaunchSite();
+        UpdateLaunchSiteLabel();
+        RefreshTrajectoryStatusUI();
+    }
+
+    public void OnPlanTrajectoryClicked()
+    {
+        if (trajectoryPlanner == null || celestialSystem == null) return;
+        if (losSystem == null || !losSystem.hasSelectedSite)
+        {
+            if (trajectoryStatusText != null)
+                trajectoryStatusText.text = "<color=#F87171>Select a Lunar landing site first!</color>";
+            return;
+        }
+
+        trajectoryPlanner.EvaluateAndBuildTrajectory(celestialSystem.j2000Days, true);
+        RefreshTrajectoryStatusUI();
+    }
+
+    public void OnNextOptimalWindowClicked()
+    {
+        if (trajectoryPlanner == null) return;
+        if (losSystem == null || !losSystem.hasSelectedSite)
+        {
+            if (trajectoryStatusText != null)
+                trajectoryStatusText.text = "<color=#F87171>Select a Lunar landing site first!</color>";
+            return;
+        }
+
+        trajectoryPlanner.StepToNextOptimalWindow(1);
+        RefreshTrajectoryStatusUI();
+    }
+
+    public void OnPlayTrajectoryAnimClicked()
+    {
+        if (trajectoryPlanner == null) return;
+        trajectoryPlanner.ToggleFlightAnimation();
+        if (playTrajectoryAnimText != null)
+            playTrajectoryAnimText.text = trajectoryPlanner.isAnimatingFlight ? "Pause Flight Anim" : "Play Flight Anim";
+    }
+
+    private void RefreshTrajectoryStatusUI()
+    {
+        if (trajectoryPlanner == null || trajectoryStatusText == null) return;
+        var ev = trajectoryPlanner.CurrentEvaluation;
+        if (!ev.isValid) return;
+
+        string statusCol = ev.isGo ? "#4ADE80" : "#F87171";
+        string statusTag = ev.isGo ? "GO" : "NO-GO";
+        int optCount = trajectoryPlanner.OptimalWindows.Count;
+        int optIdx = trajectoryPlanner.currentOptimalWindowIndex >= 0 ? trajectoryPlanner.currentOptimalWindowIndex + 1 : 0;
+
+        trajectoryStatusText.text =
+            $"<b>Launch Window: <color={statusCol}>{statusTag}</color></b> (Optimal: {optIdx}/{optCount})\n" +
+            $"Launch: {ev.launchUtcString}\n" +
+            $"Arrival (+{ev.transitDays:F2}d): {ev.arrivalUtcString}\n" +
+            $"Descent Angle: {ev.approachAngleDeg:F0}° | Terrain: {(ev.approachTerrainClear ? "CLEAR" : "HAZARD")}\n" +
+            $"<i>{ev.verdictSummary}</i>";
     }
 }
