@@ -1,3 +1,7 @@
 Update Moon model
 Add reflection from Earth (Other objects)?
-Add Earth blocking/bending sunlight
+Add Earth blocking/bending Sunlight
+
+Transition from one camera to the next
+
+Optimal launch trajectories depending on launch sites (and calendar date)
