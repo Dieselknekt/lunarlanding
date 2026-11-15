@@ -414,8 +414,9 @@ public class DualCameraController : MonoBehaviour
     public void FocusOrbitalOnDirection(Vector3 radialDir)
     {
         if (isFPS) return;
-        radialDir.Normalize();
-        pitch = Mathf.Clamp(Mathf.Asin(Mathf.Clamp(radialDir.y, -1f, 1f)) * Mathf.Rad2Deg, -85f, 85f);
-        yaw = Mathf.Atan2(radialDir.x, radialDir.z) * Mathf.Rad2Deg;
+        // Camera sits opposite to its forward view vector (-rot * Vector3.forward = radialDir)
+        Vector3 viewForward = -radialDir.normalized;
+        pitch = Mathf.Clamp(Mathf.Asin(Mathf.Clamp(viewForward.y, -1f, 1f)) * Mathf.Rad2Deg, -85f, 85f);
+        yaw = Mathf.Atan2(viewForward.x, viewForward.z) * Mathf.Rad2Deg;
     }
 }

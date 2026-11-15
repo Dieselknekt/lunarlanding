@@ -38,6 +38,17 @@ public class NavigatorUI : MonoBehaviour
     public Button returnToAstronautButton;
     public TMP_Text controlsHintText;
 
+    [Header("Step 2: 3D LOS Beams & Mission Bookmarks")]
+    public Button toggleBeamsButton;
+    public TMP_Text toggleBeamsButtonText;
+    public Button bookmarkShackletonButton;
+    public Button bookmarkApollo11Button;
+    public Button bookmarkTychoButton;
+    public Button bookmarkAristarchusButton;
+    public LunarLightingVisualizer lightingVisualizer;
+    public Slider stylizedLightingSlider;
+    public TMP_Text stylizedLightingText;
+
     [Header("Pause & Settings Menu [Esc]")]
     public GameObject pauseMenuPanel;
     public Slider sensitivitySlider;
@@ -89,6 +100,31 @@ public class NavigatorUI : MonoBehaviour
 
         SetupPauseMenu();
         ApplyCleanTextFitting();
+
+        if (toggleBeamsButton != null)
+            toggleBeamsButton.onClick.AddListener(OnToggleBeamsClicked);
+
+        if (bookmarkShackletonButton != null && losSystem != null)
+            bookmarkShackletonButton.onClick.AddListener(() => losSystem.SelectSiteByCoordinates(-89.54f, 0.00f, "Shackleton Rim (Artemis III)"));
+
+        if (bookmarkApollo11Button != null && losSystem != null)
+            bookmarkApollo11Button.onClick.AddListener(() => losSystem.SelectSiteByCoordinates(0.67f, 23.47f, "Apollo 11 (Tranquility Base)"));
+
+        if (bookmarkTychoButton != null && losSystem != null)
+            bookmarkTychoButton.onClick.AddListener(() => losSystem.SelectSiteByCoordinates(-43.31f, -11.36f, "Tycho Crater"));
+
+        if (bookmarkAristarchusButton != null && losSystem != null)
+            bookmarkAristarchusButton.onClick.AddListener(() => losSystem.SelectSiteByCoordinates(23.73f, -47.49f, "Aristarchus Plateau"));
+
+        UpdateBeamsButtonLabel();
+        if (stylizedLightingSlider != null && lightingVisualizer != null)
+        {
+            stylizedLightingSlider.minValue = 0f;
+            stylizedLightingSlider.maxValue = 1f;
+            stylizedLightingSlider.value = lightingVisualizer.stylizedBlend;
+            stylizedLightingSlider.onValueChanged.AddListener(OnStylizedLightingChanged);
+            OnStylizedLightingChanged(lightingVisualizer.stylizedBlend);
+        }
     }
 
     private void SetupPauseMenu()
@@ -144,7 +180,8 @@ public class NavigatorUI : MonoBehaviour
             siteStatusHeader, coordinatesText, slopeText, sunLosText, earthLosText,
             playerCoordinatesText, playerSunLosText, playerEarthLosText,
             viewSwitchButtonText, controlsHintText,
-            sensitivityValueText, orbitSpeedValueText, zoomSpeedValueText, scaleModeButtonText
+            sensitivityValueText, orbitSpeedValueText, zoomSpeedValueText, scaleModeButtonText,
+            toggleBeamsButtonText, stylizedLightingText
         };
 
         foreach (var t in allTexts)
@@ -417,6 +454,34 @@ public class NavigatorUI : MonoBehaviour
         if (cameraController != null)
         {
             cameraController.ReturnToLastSurfacePosition();
+        }
+    }
+    public void OnToggleBeamsClicked()
+    {
+        if (losSystem != null)
+        {
+            losSystem.showLosBeams = !losSystem.showLosBeams;
+            UpdateBeamsButtonLabel();
+        }
+    }
+
+    private void UpdateBeamsButtonLabel()
+    {
+        if (toggleBeamsButtonText != null && losSystem != null)
+        {
+            toggleBeamsButtonText.text = losSystem.showLosBeams ? "3D LOS Lasers: ON" : "3D LOS Lasers: OFF";
+        }
+    }
+    private void OnStylizedLightingChanged(float val)
+    {
+        if (lightingVisualizer != null)
+            lightingVisualizer.SetStylizedBlend(val);
+
+        if (stylizedLightingText != null)
+        {
+            int pct = Mathf.RoundToInt(val * 100f);
+            string label = pct == 0 ? "REAL" : (pct == 100 ? "STYLIZED" : $"{pct}%");
+            stylizedLightingText.text = $"LOS Map: {label}";
         }
     }
 }

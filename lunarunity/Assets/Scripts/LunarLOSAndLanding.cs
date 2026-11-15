@@ -25,10 +25,14 @@ public class LunarLOSAndLanding : MonoBehaviour
     public bool playerHasEarthLOS;
 
     [Header("Visual Marker & 3D LOS Beams")]
+    public float beamThicknessMultiplier = 6f;
+    public bool scaleBeamWithOrbitDistance = true;
     public Transform siteMarker;
     public bool showLosBeams = true;
     public float maxVisualBeamLength = 3500f;
-
+    public float normalBeaconLength = 600f;
+    private LineRenderer siteNormalBeam;
+    private LineRenderer playerNormalBeam;
     private LineRenderer siteSunBeam;
     private LineRenderer siteEarthBeam;
     private LineRenderer playerSunBeam;
@@ -40,6 +44,8 @@ public class LunarLOSAndLanding : MonoBehaviour
         siteEarthBeam = CreateBeamRenderer("SiteEarthLOSBeam", 1.8f);
         playerSunBeam = CreateBeamRenderer("PlayerSunLOSBeam", 1.2f);
         playerEarthBeam = CreateBeamRenderer("PlayerEarthLOSBeam", 1.2f);
+        siteNormalBeam = CreateBeamRenderer("SiteNormalBeacon", 1.5f);
+        playerNormalBeam = CreateBeamRenderer("PlayerNormalBeacon", 1.5f);
     }
 
     private LineRenderer CreateBeamRenderer(string beamName, float width)
@@ -63,7 +69,7 @@ public class LunarLOSAndLanding : MonoBehaviour
         return lr;
     }
 
-    void Update()
+void Update()
     {
         var mouse = Mouse.current;
         var keyboard = Keyboard.current;
@@ -87,9 +93,21 @@ public class LunarLOSAndLanding : MonoBehaviour
         }
 
         float currentEyeOffset = cameraController != null ? cameraController.eyeHeight : 0.05f;
-        float beamScale = inOrbit ? 1f : (cameraController != null && cameraController.isDebugScale ? 0.15f : 0.02f);
 
-        // 1. Evaluate & visualize LOS for the selected Landing Site
+        float orbitDistanceFactor = 1f;
+        if (inOrbit && scaleBeamWithOrbitDistance && orbitalCamera != null)
+        {
+            float distToMoon = Vector3.Distance(orbitalCamera.transform.position, moonCenter.position);
+            orbitDistanceFactor = Mathf.Max(1f, distToMoon / 1800f);
+        }
+
+        float baseScale = inOrbit
+            ? orbitDistanceFactor
+            : (cameraController != null && cameraController.isDebugScale ? 0.15f : 0.02f);
+        float beamScale = baseScale * beamThicknessMultiplier;
+        float beaconLen = inOrbit ? normalBeaconLength : (cameraController != null && cameraController.isDebugScale ? 25f : 2.5f);
+
+        // 1. Evaluate & visualize LOS + Radial Normal Beacon for the selected Landing Site
         if (hasSelectedSite)
         {
             EvaluateAndDrawLOS(
@@ -101,6 +119,9 @@ public class LunarLOSAndLanding : MonoBehaviour
                 beamScale
             );
 
+            Vector3 siteRadialUp = (selectedPoint - moonCenter.position).normalized;
+            DrawNormalBeacon(siteNormalBeam, selectedPoint, siteRadialUp, beaconLen, beamScale * 0.9f, new Color(1f, 0.35f, 0.45f, 0.85f));
+
             if (inOrbit && keyboard.fKey.wasPressedThisFrame)
             {
                 EnterFPSAtSelectedSite();
@@ -110,9 +131,10 @@ public class LunarLOSAndLanding : MonoBehaviour
         {
             SetBeamEnabled(siteSunBeam, false);
             SetBeamEnabled(siteEarthBeam, false);
+            SetBeamEnabled(siteNormalBeam, false);
         }
 
-        // 2. Evaluate & visualize LOS for the Astronaut (active FPS camera or saved PlayerMarker surface position)
+        // 2. Evaluate & visualize LOS + Radial Normal Beacon for the Astronaut
         if (cameraController != null)
         {
             if (cameraController.IsFPSActive && cameraController.fpsCamera != null)
@@ -120,7 +142,6 @@ public class LunarLOSAndLanding : MonoBehaviour
                 hasPlayerTelemetry = true;
                 Vector3 playerEyePos = cameraController.fpsCamera.transform.position;
                 Vector3 radialUp = (playerEyePos - moonCenter.position).normalized;
-                // Offset beam start slightly downward from eye level so it doesn't block center crosshair
                 Vector3 chestOrigin = playerEyePos - radialUp * (currentEyeOffset * 0.35f);
 
                 EvaluateAndDrawLOS(
@@ -131,6 +152,9 @@ public class LunarLOSAndLanding : MonoBehaviour
                     new Color(0.3f, 0.95f, 0.85f, 0.8f),
                     beamScale * 0.75f
                 );
+
+                // Hide the player's vertical zenith beam while inside FPS POV so it doesn't obstruct overhead view
+                SetBeamEnabled(playerNormalBeam, false);
             }
             else if (cameraController.hasSavedSurfacePos)
             {
@@ -143,14 +167,33 @@ public class LunarLOSAndLanding : MonoBehaviour
                     new Color(0.3f, 0.95f, 0.85f, 0.85f),
                     beamScale * 0.85f
                 );
+
+                DrawNormalBeacon(playerNormalBeam, cameraController.savedSurfacePoint, cameraController.savedSurfaceUp, beaconLen, beamScale * 0.9f, new Color(0.35f, 1f, 0.55f, 0.85f));
             }
             else
             {
                 hasPlayerTelemetry = false;
                 SetBeamEnabled(playerSunBeam, false);
                 SetBeamEnabled(playerEarthBeam, false);
+                SetBeamEnabled(playerNormalBeam, false);
             }
         }
+    }
+
+    private void DrawNormalBeacon(LineRenderer beam, Vector3 surfaceOrigin, Vector3 radialUp, float length, float widthScale, Color beaconColor)
+    {
+        if (beam == null) return;
+        SetBeamEnabled(beam, showLosBeams);
+        if (!showLosBeams) return;
+
+        beam.startWidth = 1.4f * widthScale;
+        beam.endWidth = 0.2f * widthScale; // Tapers to a sharp zenith pointer in space
+        beam.SetPosition(0, surfaceOrigin);
+        beam.SetPosition(1, surfaceOrigin + radialUp * length);
+
+        Color tipColor = new Color(beaconColor.r, beaconColor.g, beaconColor.b, 0.15f);
+        beam.startColor = beaconColor;
+        beam.endColor = tipColor;
     }
 
     public void SelectLandingSite(Vector3 point, Vector3 normal)
@@ -227,7 +270,7 @@ public class LunarLOSAndLanding : MonoBehaviour
             if (showLosBeams)
             {
                 sunBeam.startWidth = 1.6f * widthScale;
-                sunBeam.endWidth = 0.6f * widthScale;
+                sunBeam.endWidth = 1.2f * widthScale;
                 sunBeam.SetPosition(0, origin);
                 Vector3 endPos = hitSunObstruction ? sunHit.point : origin + toSun * Mathf.Min(distToSun, maxVisualBeamLength);
                 sunBeam.SetPosition(1, endPos);
@@ -251,7 +294,7 @@ public class LunarLOSAndLanding : MonoBehaviour
             if (showLosBeams)
             {
                 earthBeam.startWidth = 1.6f * widthScale;
-                earthBeam.endWidth = 0.6f * widthScale;
+                earthBeam.endWidth = 1.2f * widthScale;
                 earthBeam.SetPosition(0, origin);
                 Vector3 endPos = hitEarthObstruction ? earthHit.point : origin + toEarth * Mathf.Min(distToEarth, maxVisualBeamLength);
                 earthBeam.SetPosition(1, endPos);
